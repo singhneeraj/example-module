@@ -1,0 +1,361 @@
+<?php 
+/*
+ *  Implementation of hook_menu
+ */
+function im_homepage_menu() {
+  $items = array();
+	
+  /* new home page */
+  $items['homepage'] = array(
+    //'title' => 'home page',
+    'page callback' => '_im_homepage_get_content',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['guide-detail/%ctools_js/%'] = array(
+	'title' => 'Guide Detail on homepage',
+	'page callback' => 'im_homepage_guide_detail',
+	'access callback' => TRUE,
+	'type' => MENU_CALLBACK,
+  );
+  return $items;
+} 
+/**
+ * Implements hook_block_info()
+ */
+function im_homepage_block_info() {
+  $blocks = array();
+  
+  $blocks['traffic_info'] = array(
+    'info' => t('traffic'),
+    'title' => '<none>',
+    'cache' => DRUPAL_NO_CACHE,
+  );
+  $blocks['guide_info'] = array(
+    'info' => t('guide'),
+    'title' => '<none>',
+    'cache' => DRUPAL_NO_CACHE,
+  );
+  return $blocks;
+}
+/**
+ * Implements hook_block_view()
+ */
+function im_homepage_block_view($delta = '') {
+  $block = array();
+  switch($delta) {
+    case 'traffic_info':
+      $block['subject'] = '';
+      $block['content'] = _im_homepage_get_traffic();
+      break;
+    case 'guide_info':
+      $block['subject'] = '';
+      $block['content'] = _im_homepage_get_guide_content();
+      break;
+  }  return $block;
+}
+/**
+ * Implementation of hook_theme
+ */
+function im_homepage_theme($existing, $type, $theme, $path) {
+  return array(
+    'home_page_template' => array(
+    'template' => 'theme/home_page_template',
+    'variables' => array('data' => NULL),
+    ),  
+    'hp_traffic_template' => array(
+    'template' => 'theme/hp_traffic_template',
+    'variables' => array('link' => NULL),
+    ), 
+    'hp_guide_template' => array(
+    'template' => 'theme/hp_guide_template',
+    'variables' => array('link' => NULL),
+    ),
+    'guide_popup_template' => array(
+    'template' => 'theme/guide_popup_template',
+    ),
+  );
+}
+/**
+ * callback function for new homepage
+ */
+function _im_homepage_get_content(){
+  drupal_add_css(drupal_get_path('module', 'im_homepage') . '/css/home_style.css');
+  return theme('home_page_template');
+}
+/**
+ * Function to get traffic for the week
+ */
+function _im_homepage_get_traffic($delta){
+  $traffic_flag = false;
+  $current_date  = date('Y-m-d');
+  $startDateArray = explode('T', $current_date);
+  $startDate = $startDateArray[0];
+  $year = date("o", strtotime($startDate));
+  $weekno  = date('W', strtotime($startDate));     
+  $weekStartDate = date("Y-m-d", strtotime("{$year}-W{$weekno}-1"));   //Returns the date of monday in week
+  $weekEndDate   = date("Y-m-d", strtotime("{$year}-W{$weekno}-7"));   //Returns the date of sunday in week
+  
+  $traffic_query = db_query("SELECT ws.entity_id FROM {field_data_field_sp_operation_period} ws WHERE TO_DATE(ws.field_sp_operation_period_value, 'YYYY-MM-DD') >= :start_date AND TO_DATE(ws.field_sp_operation_period_value, 'YYYY-MM-DD') <= :end_date and ws.bundle='sales_plan'", array(':start_date' => $weekStartDate, ':end_date' => $weekEndDate));
+  $traffic_result = $traffic_query->fetchAssoc();
+  
+  if($traffic_query->rowCount() > 0){
+    $path = "sales-plan/now/all/".date('W').'/'.$traffic_result['entity_id'];
+    $markup = l(t('Trafic de la semaine'), $path, array('html'=>TRUE, 'attributes' => array('class' => 'link-box trafic'),'query' => array(
+      'scrollsales' => 1)));
+  }
+  else{
+    $markup = l(t('Trafic de la semaine'),'javascript:', array('html'=>TRUE,'external' => TRUE, 'attributes' => array('class' => 'link-box trafic not-active')));
+  }
+
+  return theme('hp_traffic_template', array('link' => $markup));
+}
+/**
+ * Function to render guide block on homepage
+ */
+function _im_homepage_get_guide_content(){
+  im_homepage_add_ctools();
+  $guide_nodes = get_guide_nodes();
+  $guide_content = array();
+  $i  = 0;
+  foreach ($guide_nodes as $key => $guide) {
+    $guide_content[$i]['nid'] = $guide['nid'];			
+    $i++;
+    }
+  $markup = '<div class="link-box guide">'.ctools_modal_text_button(t('Guide du commerçant'), 'guide-detail/nojs/'.$guide_content[0]['nid'],t('Guide du commerçant'), 'ctools-modal-ctools-sample-style').'</div>'; 
+  return theme('hp_guide_template', array('link' => $markup));
+
+}
+/**
+ * Function to render content for guide pop-up on homepage
+ */
+function im_homepage_guide_detail($js = NULL) {	
+drupal_add_js(drupal_get_path('module', 'im_features_om') . '/js/jquery.printElement.min.js');
+  global $language;
+  global $user;
+  $nodeObj = node_load(arg(2));
+  ctools_include('modal');
+  ctools_include('ajax');
+  $output = array();
+  $node_array = array();
+  $guide_day = array();
+  $guidePrev = array();
+  $guideCurr = array();
+  $guideNext = array();
+  $result = get_guide_nodes();
+
+  foreach ($result as $key => $guide) {
+    if(sizeof($guideCurr) != 0) {
+      $guideNext = array('nid' => $guide['nid'], 'type' => $guide['type']);
+      break;
+    }
+    if($guide['nid'] == arg(2)) {
+      $guideCurr = array('nid' => $guide['nid'], 'type' => $guide['type']);
+    }
+    else { 
+      $guidePrev = array('nid' => $guide['nid'], 'type' => $guide['type']);
+    }
+  }
+
+  $node_array['guidePrev'] = $guidePrev;
+  $node_array['guideCurr'] = $guideCurr;
+  $node_array['guideNext'] = $guideNext;
+  if ($nodeObj->status) {
+    if(isset($nodeObj->field_agenda_date[LANGUAGE_NONE][0]['value']) && $nodeObj->field_agenda_date[LANGUAGE_NONE][0]['value']) {
+      $guide_day = strtotime($nodeObj->field_agenda_date[LANGUAGE_NONE][0]['value']);
+      $node_array['guide_day'] = t(date('l', $guide_day)) . ' ' . date('d', $guide_day) . ' ' . t(date('F', $guide_day)) . ' ' . t(date('Y', $guide_day));   
+    } 
+    $node_array['nid'] = $nodeObj->nid;
+    $node_array['type'] = $nodeObj->type;
+    $node_array['title'] = $nodeObj->title;
+    //UATIM-795
+    if($_SESSION['ldap_user_role'] == 'salarie_siege') {
+      $originalDate = explode('T',$nodeObj->field_publication_to_date['und'][0]['value']);
+      $node_array['publication_end_date'] = 'Fin de publication le '.date("d/m/Y", strtotime($originalDate[0]));
+    }
+    $node_array['description'] = isset($nodeObj->body[LANGUAGE_NONE][0]['value']) ? $nodeObj->body[LANGUAGE_NONE][0]['value'] : '';
+    $node_array['name'] = $nodeObj->name;
+    //Department Color
+    if($nodeObj->type == 'action'){
+      if(!empty($nodeObj->field_agenda_info['und'][0]['value']) && $nodeObj->field_agenda_info[LANGUAGE_NONE][0]['value']== 'info'){
+        $node_array['icon'] = '<span class="action-info-icon"></span>';
+      }
+      else{
+        $node_array['icon'] = '<span class="action-icon"></span>';
+      }
+    }
+    elseif ($nodeObj->type == 'alert'){
+      $node_array['icon'] = '<span class="alert-icon"></span>';
+    } 
+    elseif ($nodeObj->type =='news'){
+      $node_array['icon'] = '<span class="news-benchmark-icon"></span>';
+    }
+    elseif ($nodeObj->type =='benchmark'){
+      $node_array['icon'] = '<span class="news-benchmark-icon"></span>';
+    }
+    if(isset($nodeObj->field_agenda_department[LANGUAGE_NONE])) {
+      if(count($nodeObj->field_agenda_department['und'])> 1){
+        $node_array['department_color'] = 'gray';
+        $node_array['department_name'] = '';
+      }
+      else{
+        $department_colors= _get_department_color_by_tid($nodeObj->field_agenda_department['und'][0]['tid']);
+        $node_array['department_color'] = $department_colors['color'];
+        if(!empty($department_colors['shortname'])){
+          $node_array['department_name'] = $department_colors['shortname'];
+        }
+      }
+    }
+    //Fonctions concernées
+    $functions = (isset($nodeObj->field_agenda_concernees[LANGUAGE_NONE]) && is_array($nodeObj->field_agenda_concernees[LANGUAGE_NONE])) ? $nodeObj->field_agenda_concernees[LANGUAGE_NONE] : array();
+    $function_roles = array();
+    foreach ($functions as $index => $function_role) {
+      $function_roles[] = t(ucfirst(str_replace('_', ' ', $function_role['value'])));
+    }
+    $node_array['function'] = implode(', ', $function_roles);
+    //Auteur
+    $roles = $userObj->roles;
+    if(isset($roles[1])) unset($roles[1]);
+    if(isset($roles[2])) unset($roles[2]);
+    $userName = isset($userObj->field_full_name[LANGUAGE_NONE][0]['value']) ? $userObj->field_full_name[LANGUAGE_NONE][0]['value'] : '';
+    if(isset($nodeObj->field_agenda_source[LANGUAGE_NONE][0]['value'])) {
+      $source = $nodeObj->field_agenda_source[LANGUAGE_NONE][0]['value'];
+      $source_name = str_replace(array('(',')'),'',substr($source, strpos($source, '('), strpos($source, ')')));
+      if($source_name) {
+        $obj = new imldapSoapService();
+        $objAuthorAttribute = $obj->soapRequest('getUserAttributs', array('id' => $_SESSION['ldap_login_key'], 'login' => $source_name, 'attributsType' =>  array('cn', 'mail'), 'pad'=>'|'));
+        if($objAuthorAttribute->status == 'success') {
+          //Split multiple email ids
+          $author_name = explode('|', $objAuthorAttribute->data[0]);
+          $author_email = explode('|', $objAuthorAttribute->data[1]);
+          $node_array['author'] = array('name' => $author_name[1], 'email' => $author_email[1]);
+        }
+      }
+    }
+    //Relais en magasin
+    $relais_en_magasin = array();
+    $relais_en_magasin_values = array();
+    $related_terms = isset($nodeObj->field_agenda_relais[LANGUAGE_NONE]) ? $nodeObj->field_agenda_relais[LANGUAGE_NONE] : array();   
+    foreach ($related_terms as $term) {
+      $termObj = taxonomy_term_load($term['tid']);
+      if(isset($termObj->field_taxo_relais_en_magasin[LANGUAGE_NONE][0]['value'])) {
+        $relais_en_magasin[] = $termObj->field_taxo_relais_en_magasin[LANGUAGE_NONE][0]['value'];
+      }
+    }  
+    $userData = user_load($user->uid);
+    $user_profile_stores = array();
+    $user_profile_stores = isset($userData->field_user_stores['und'][0]['value']) ? explode(',', $userData->field_user_stores['und'][0]['value']) : array();
+   
+   
+    //If user select single store
+    if(isset($_SESSION['user_selected_store']) && is_numeric($_SESSION['user_selected_store'])){
+      $user_profile_stores = $_SESSION['user_selected_store'];
+    }
+    else {
+      $st = array();
+      if (isset($nodeObj->field_agenda_preference_nid['und'][0]['value'])) {
+  		$node_preference = node_load($nodeObj->field_agenda_preference_nid['und'][0]['value']);
+  		if(isset($node_preference->field_preferred_store_options['und']) && count($node_preference->field_preferred_store_options['und']) > 0){
+  		  foreach ($node_preference->field_preferred_store_options['und'] as $value) {
+  		  	$st[] = $value['value'];
+  		  }
+  		}
+      }
+      $node_content_stores = $st; //explode(',', $nodeObj->field_agenda_store['und'][0]['value']);
+      $user_profile_stores = array_intersect($user_profile_stores, $node_content_stores);
+    }
+    $current_nid = arg(3);
+    $current_uid = $user->uid;
+    $stores_array = explode(',', $_SESSION['profil']['stores']);    
+    if (isset($_SESSION['profil']['stores']) && count($stores_array) == 1 ) {
+      $user_processed_store = isset($_SESSION['profil']['stores']) ? $_SESSION['profil']['stores'] : '';	
+    }else {
+      $user_processed_store = isset($_SESSION['user_selected_store']) ? $_SESSION['user_selected_store'] : '';
+    }
+    /*Display the proceesed/non-processsed information in the pop-up */
+    if (isset($user_processed_store)) {
+      $node_array = im_agenda_retrive_processed_details($current_nid, $current_uid, $nodeObj,  $node_array, $user_processed_store);	
+    }    
+    
+    if(count($relais_en_magasin) > 0 && count($user_profile_stores) == 1) {
+      $result = db_query("SELECT DISTINCT sif.dit_cod_item,
+                                 sif.ite_lib_value
+                          FROM {store_item_fields} sif,
+                               {store_item_fields_desc} sifd
+                          WHERE sif.dit_cod_item = sifd.dit_cod_item
+                          AND sifd.ddo_lib = 'Contacts' 
+                          AND sifd.dit_lib IN (:params)
+                          AND sif.pve_code IN(:user_profile_stores)",
+                          array(':params' => $relais_en_magasin, ':user_profile_stores' => $user_profile_stores)
+                         );
+      $obj = new imldapSoapService();
+      foreach ($result as $relaisObj) {
+          if($relaisObj->dit_cod_item && $relaisObj->ite_lib_value) {
+            $objAttribute = $obj->soapRequest('getUserAttributs', array('id' => $_SESSION['ldap_login_key'], 'login' => $relaisObj->ite_lib_value, 'attributsType' =>   array('cn', 'mail', 'mobile','telephoneNumber'), 'pad'=>''));
+            if($objAttribute->status == 'success') {
+              $relais_en_magasin_values[] = array('name' => $objAttribute->data[0], 'mail' => $objAttribute->data[1], 'mobile' => $objAttribute->data[2], 'telephoneNumber' => $objAttribute->data[3]);
+            }
+          }
+        }
+    }else if(count($user_profile_stores) > 1){
+      foreach($relais_en_magasin as $magasin) {
+        $relais_en_magasin_values[] = array('name' => '', 'mail' => $magasin);
+      }
+    }
+    $node_array['relais_en_magasins'] = $relais_en_magasin_values;
+    //documents
+    $documents = (isset($nodeObj->field_agenda_attachments[LANGUAGE_NONE]) && is_array($nodeObj->field_agenda_attachments[LANGUAGE_NONE])) ? $nodeObj->field_agenda_attachments[LANGUAGE_NONE] : array();
+    $document_links = array();
+    foreach ($documents as $index => $document) {
+      //$document_links[] = array('name' => $document['filename'], 'url' => urldecode(file_create_url($document['uri'])));
+      $document_links[] = array('name' => $document['filename'], 'file_id' => $document['fid'], 'url' => file_create_url($document['uri']));
+    }
+    $node_array['document_links'] = $document_links;
+  }
+  
+  $output[] = ctools_modal_command_display(t('Title'), theme('guide_popup_template', $node_array));
+  print ajax_render($output);
+  exit;
+}
+function im_homepage_add_ctools() {
+	ctools_include('ajax');
+	ctools_include('modal');
+	// Add CTools' javascript to the page.
+	ctools_modal_add_js();
+	// Create our own javascript that will be used to theme a modal.
+	$sample_style = array(
+    'ctools-sample-style' => array(
+      'modalSize' => array(
+        'type' => 'fixed',
+        'width' => 1000,
+        'height' => 400,
+        'addWidth' => 20,
+        'addHeight' => 15,
+	),
+      'modalOptions' => array(
+        'opacity' => .5,
+        'background-color' => '#FFF',
+	),
+      'animation' => 'fadeIn',
+      'modalTheme' => 'IntranetPopup',
+      'throbber' => theme('image', array('path' => ctools_image_path('ajax-loader.gif', 'ctools_ajax_sample'), 'alt' => t('Loading'), 'title' => t('Loading'))),
+	),
+	);
+	drupal_add_js($sample_style, 'setting');
+	ctools_add_js('ctools-ajax-sample', 'ctools_ajax_sample');
+	ctools_add_css('ctools-ajax-sample', 'ctools_ajax_sample');
+}
+/**
+ * Function to get news content of guide type
+ */
+function get_guide_nodes(){
+  $d = strtotime("-3 Weeks");
+  $end_date = date('Y-m-d', $d);   // to be changed as per requirement
+  $start_date = date('Y-m-d');
+  $result = array();
+  $news_guide_content = _im_agenda_news_benchmark_filter_content($start_date, $end_date,$user_store = NULL, $type='guides');
+  foreach($news_guide_content as $key=>$value) {
+    array_push($result, $value);
+  }
+  return $result;
+}    

@@ -1,0 +1,6 @@
+name = im homepage
+description = Provides homepage functionality
+package = Carrefour IM modules
+project = im_homepage
+core = 7.x
+version = 7.x-1.0
