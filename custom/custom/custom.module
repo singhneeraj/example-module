@@ -1,0 +1,61 @@
+<?php
+/**
+ * Implements hook_menu().
+ */
+function custom_menu() {
+  $items = array();
+  
+  $items['custompage/page'] = array(
+    'page callback' => 'custom_page', 
+    'access callback' => TRUE, 
+    'type' => MENU_CALLBACK
+  );
+  
+  $items['customtest/callback'] = array(
+    'page callback' => 'custom_pcallback',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK
+  );
+  
+  $items['custom/%'] = array(
+    'page callback' => 'custom_callback', 
+    'access callback' => TRUE, 
+    'type' => MENU_CALLBACK
+  );
+  
+  return $items;
+}
+
+
+
+function custom_page(){  
+// Load the modal library and add the modal javascript.
+ctools_include('modal');
+ctools_modal_add_js();  
+$output =  '<span class="Button">Click Here</div>';
+$output .= '<div id="Load-Data"></div>';
+return $output;
+}
+
+
+/**
+ * An example page.
+ */
+function custom_pcallback() {   
+  $link = '<div id="Ajax-Data">';
+  $link .= "<h1>Soli Hello</h1>";
+  $link  .= "<div>".l('Click here soli', 'custom/nojs', array('attributes' => array('class' => 'ctools-use-modal')))."</div>"; 
+  $link .= "<div>".l('Click here Man', 'custom/nojs', array('attributes' => array('class' => 'ctools-use-modal')))."</div>";
+  $link .= "<div>".l('Click here Test', 'custom/nojs', array('attributes' => array('class' => 'ctools-use-modal')))."</div></div>";
+  print  $link;  
+}
+
+/**
+ * Ajax menu callback.
+ */
+function custom_callback() {
+    ctools_include('ajax');
+    ctools_include('modal');
+    $output[] = ctools_modal_command_display('Test Ctools', '<div class="soli">Welcome</div>');    
+    print ajax_render($output);
+}

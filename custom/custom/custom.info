@@ -1,0 +1,6 @@
+name = Custom Module
+description = "Custom Module"
+core = 7.x
+scripts[] = custom.js
+package = Custom
+dependencies[]=ctools
